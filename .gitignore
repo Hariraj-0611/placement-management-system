@@ -1,0 +1,34 @@
+echo # Python > .gitignore
+echo __pycache__/ >> .gitignore
+echo *.pyc >> .gitignore
+echo venv/ >> .gitignore
+echo env/ >> .gitignore
+echo .env >> .gitignore
+echo *.log >> .gitignore
+echo db.sqlite3 >> .gitignore
+echo media/ >> .gitignore
+echo static/ >> .gitignore
+echo >> .gitignore
+echo # Django >> .gitignore
+echo *.pot >> .gitignore
+echo *.py[co] >> .gitignore
+echo local_settings.py >> .gitignore
+echo >> .gitignore
+echo # Node >> .gitignore
+echo node_modules/ >> .gitignore
+echo dist/ >> .gitignore
+echo build/ >> .gitignore
+echo .vite/ >> .gitignore
+echo *.log >> .gitignore
+echo .env.local >> .gitignore
+echo .env.development.local >> .gitignore
+echo .env.production.local >> .gitignore
+echo >> .gitignore
+echo # IDE >> .gitignore
+echo .vscode/ >> .gitignore
+echo .idea/ >> .gitignore
+echo *.sublime-* >> .gitignore
+echo >> .gitignore
+echo # OS >> .gitignore
+echo .DS_Store >> .gitignore
+echo Thumbs.db >> .gitignore
