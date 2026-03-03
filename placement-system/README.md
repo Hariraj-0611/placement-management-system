@@ -320,3 +320,7 @@ Built as a demonstration of full-stack development with RBAC.
 <!-- CHECKPOINT id="ckpt_mmafjd54_0d7b3s" time="2026-03-03T09:53:01.000Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
 
 <!-- CHECKPOINT id="ckpt_mmafw83q_hshcyg" time="2026-03-03T10:03:00.998Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mmag932w_it4tkc" time="2026-03-03T10:13:01.016Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
+
+<!-- CHECKPOINT id="ckpt_mmagv6zl_8qu1ay" time="2026-03-03T10:30:12.513Z" note="auto" fixes=0 questions=0 highlights=0 sections="" -->
