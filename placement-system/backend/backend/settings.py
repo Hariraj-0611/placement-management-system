@@ -13,7 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-your-secret-key-here-change-this'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
 ALLOWED_HOSTS = ['*']
 
@@ -41,6 +41,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    ####################################################
+    'whitenoise.middleware.WhiteNoiseMiddleware'
+    ####################################################
 ]
 
 ROOT_URLCONF = 'backend.urls'
@@ -104,6 +107,11 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+
+
+##########################################################
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+############################################################
 
 # Media files
 MEDIA_URL = '/media/'
@@ -189,3 +197,8 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 # EMAIL_HOST_USER = 'your-email@gmail.com'  # Replace with your Gmail address
 # EMAIL_HOST_PASSWORD = 'your-app-password'  # Replace with your Gmail app password
 DEFAULT_FROM_EMAIL = 'noreply@placementsystem.com'
+
+####################################################
+
+ALLOWED_HOSTS = ['.onrender.com']
+####################################################
