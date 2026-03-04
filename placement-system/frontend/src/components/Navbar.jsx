@@ -133,6 +133,7 @@ function Navbar() {
                   <NavLink to="/placement/students">Students</NavLink>
                   <NavLink to="/placement/applications">Applications</NavLink>
                   <NavLink to="/placement/users">Users</NavLink>
+                  <NavLink to="/placement/bulk-upload">Bulk Upload</NavLink>
                 </>
               )}
             </div>
@@ -246,6 +247,9 @@ function Navbar() {
                 </Link>
                 <Link to="/placement/users" className="block px-3 py-2 rounded-lg text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50">
                   Users
+                </Link>
+                <Link to="/placement/bulk-upload" className="block px-3 py-2 rounded-lg text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50">
+                  Bulk Upload
                 </Link>
               </>
             )}

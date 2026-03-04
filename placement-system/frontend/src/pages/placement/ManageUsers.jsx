@@ -17,7 +17,8 @@ function ManageUsers() {
     first_name: '',
     last_name: '',
     role: 'STAFF',
-    department: ''
+    department: '',
+    date_of_birth: ''
   });
   const [newPassword, setNewPassword] = useState('');
 
@@ -60,7 +61,8 @@ function ManageUsers() {
         first_name: '',
         last_name: '',
         role: 'STAFF',
-        department: ''
+        department: '',
+        date_of_birth: ''
       });
       fetchUsers();
     } catch (error) {
@@ -321,14 +323,28 @@ function ManageUsers() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
+                <input
+                  type="date"
+                  value={formData.date_of_birth}
+                  onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  If provided, date of birth will be used as default password (DDMMYYYY format)
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Password (Optional)</label>
                 <input
                   type="password"
-                  required
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  Leave empty to use date of birth as password
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

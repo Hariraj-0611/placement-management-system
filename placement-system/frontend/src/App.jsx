@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import ChangePassword from './pages/ChangePassword';
 
 // Student Pages
 import StudentDashboard from './pages/student/Dashboard';
@@ -31,6 +32,7 @@ import PlacementApplications from './pages/placement/ManageApplications';
 import CreateDrive from './pages/placement/CreateDrive';
 import ManageUsers from './pages/placement/ManageUsers';
 import PlacementProfile from './pages/placement/Profile';
+import BulkUpload from './pages/placement/BulkUpload';
 
 // Common Pages
 import Unauthorized from './pages/Unauthorized';
@@ -78,6 +80,7 @@ function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/change-password" element={<ChangePassword />} />
             <Route path="/unauthorized" element={<Unauthorized />} />
 
             {/* Student Routes */}
@@ -210,6 +213,14 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['PLACEMENT']}>
                   <ManageUsers />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/placement/bulk-upload"
+              element={
+                <ProtectedRoute allowedRoles={['PLACEMENT']}>
+                  <BulkUpload />
                 </ProtectedRoute>
               }
             />

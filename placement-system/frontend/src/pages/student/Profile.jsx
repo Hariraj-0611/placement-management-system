@@ -5,8 +5,9 @@ import {
   updateMyProfile,
   uploadProfilePhoto,
   uploadResume,
+  changePassword,
 } from '../../services/api';
-import { PencilIcon, DocumentArrowDownIcon } from '@heroicons/react/24/outline';
+import { PencilIcon, DocumentArrowDownIcon, KeyIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
 const StudentProfile = () => {
@@ -17,6 +18,14 @@ const StudentProfile = () => {
   const [cgpa, setCgpa] = useState('');
   const [department, setDepartment] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  
+  // Password change state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    oldPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
 
   useEffect(() => {
     if (profile) {
@@ -102,7 +111,6 @@ const StudentProfile = () => {
       setLoading(true);
       await updateMyProfile({
         skills,
-        cgpa: parseFloat(cgpa),
       });
       setIsEditing(false);
       toast.success('Profile updated successfully');
@@ -120,6 +128,32 @@ const StudentProfile = () => {
       return `${user.first_name[0]}${user.last_name[0]}`.toUpperCase();
     }
     return user?.username?.[0]?.toUpperCase() || '?';
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    
+    if (!passwordData.oldPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
+      toast.error('All password fields are required');
+      return;
+    }
+    
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      await changePassword(passwordData.oldPassword, passwordData.newPassword, passwordData.confirmPassword);
+      toast.success('Password changed successfully!');
+      setShowPasswordModal(false);
+      setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to change password');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -187,13 +221,22 @@ const StudentProfile = () => {
             
             <div className="mt-4 md:mt-0">
               {!isEditing && (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
-                >
-                  <PencilIcon className="h-4 w-4" />
-                  Edit Profile
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+                  >
+                    <PencilIcon className="h-4 w-4" />
+                    Edit Profile
+                  </button>
+                  <button
+                    onClick={() => setShowPasswordModal(true)}
+                    className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition flex items-center gap-2"
+                  >
+                    <KeyIcon className="h-4 w-4" />
+                    Change Password
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -215,26 +258,14 @@ const StudentProfile = () => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 CGPA
+                <span className="ml-2 text-xs text-gray-500">(Read-only - Contact placement officer to update)</span>
               </label>
-              {isEditing ? (
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="10"
-                  value={cgpa}
-                  onChange={(e) => setCgpa(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter your CGPA"
-                />
-              ) : (
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-2xl font-bold text-gray-900">
-                    {cgpa || 'Not specified'}
-                    {cgpa && <span className="text-lg text-gray-500"> / 10</span>}
-                  </p>
-                </div>
-              )}
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <p className="text-2xl font-bold text-gray-900">
+                  {cgpa || 'Not specified'}
+                  {cgpa && <span className="text-lg text-gray-500"> / 10</span>}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -402,6 +433,95 @@ const StudentProfile = () => {
                 </>
               )}
             </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Change Password Modal */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                <KeyIcon className="h-6 w-6 mr-2 text-blue-600" />
+                Change Password
+              </h2>
+              <button
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  value={passwordData.oldPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, oldPassword: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  value={passwordData.newPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Must be at least 8 characters with uppercase, lowercase, and number
+                </p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  value={passwordData.confirmPassword}
+                  onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+              </div>
+              
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasswordModal(false);
+                    setPasswordData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+                >
+                  {loading ? 'Changing...' : 'Change Password'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

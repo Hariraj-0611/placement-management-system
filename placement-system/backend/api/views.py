@@ -7,6 +7,10 @@ from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from django.core.mail import send_mail
 from django.conf import settings
 from django.db.models import Q, Count
+from django.db import transaction
+import pandas as pd
+import secrets
+import string
 from .models import User, StudentProfile, CompanyDrive, Application, PasswordResetToken
 from .serializers import *
 from .permissions import (
@@ -368,13 +372,13 @@ def staff_dashboard(request):
     Staff dashboard - read-only view
     """
     return Response({
-        'total_students': StudentProfile.objects.count(),
+        'total_students': StudentProfile.objects.filter(user__is_deleted=False).count(),
         'total_drives': CompanyDrive.objects.count(),
         'active_drives': CompanyDrive.objects.filter(status='active').count(),
-        'total_applications': Application.objects.count(),
-        'pending_applications': Application.objects.filter(status='Applied').count(),
-        'shortlisted_applications': Application.objects.filter(status='Shortlisted').count(),
-        'selected_applications': Application.objects.filter(status='Selected').count(),
+        'total_applications': Application.objects.filter(student__user__is_deleted=False).count(),
+        'pending_applications': Application.objects.filter(student__user__is_deleted=False, status='Applied').count(),
+        'shortlisted_applications': Application.objects.filter(student__user__is_deleted=False, status='Shortlisted').count(),
+        'selected_applications': Application.objects.filter(student__user__is_deleted=False, status='Selected').count(),
     }, status=status.HTTP_200_OK)
 
 
@@ -385,16 +389,16 @@ def placement_dashboard(request):
     Placement officer dashboard with full statistics
     """
     return Response({
-        'total_students': StudentProfile.objects.count(),
+        'total_students': StudentProfile.objects.filter(user__is_deleted=False).count(),
         'total_drives': CompanyDrive.objects.count(),
         'active_drives': CompanyDrive.objects.filter(status='active').count(),
         'closed_drives': CompanyDrive.objects.filter(status='closed').count(),
         'completed_drives': CompanyDrive.objects.filter(status='completed').count(),
-        'total_applications': Application.objects.count(),
-        'pending_applications': Application.objects.filter(status='Applied').count(),
-        'shortlisted_applications': Application.objects.filter(status='Shortlisted').count(),
-        'selected_applications': Application.objects.filter(status='Selected').count(),
-        'rejected_applications': Application.objects.filter(status='Rejected').count(),
+        'total_applications': Application.objects.filter(student__user__is_deleted=False).count(),
+        'pending_applications': Application.objects.filter(student__user__is_deleted=False, status='Applied').count(),
+        'shortlisted_applications': Application.objects.filter(student__user__is_deleted=False, status='Shortlisted').count(),
+        'selected_applications': Application.objects.filter(student__user__is_deleted=False, status='Selected').count(),
+        'rejected_applications': Application.objects.filter(student__user__is_deleted=False, status='Rejected').count(),
         'my_drives': CompanyDrive.objects.filter(created_by=request.user).count(),
     }, status=status.HTTP_200_OK)
 
@@ -410,7 +414,7 @@ class StudentProfileViewSet(viewsets.ModelViewSet):
     - STAFF: Can view all profiles (read-only)
     - PLACEMENT: Can view all profiles and manage them
     """
-    queryset = StudentProfile.objects.all().select_related('user')
+    queryset = StudentProfile.objects.filter(user__is_deleted=False).select_related('user')
     serializer_class = StudentProfileSerializer
     permission_classes = [IsAuthenticated, CanViewStudents]
     
@@ -419,10 +423,10 @@ class StudentProfileViewSet(viewsets.ModelViewSet):
         
         if user.role == 'STUDENT':
             # Students can only see their own profile
-            return StudentProfile.objects.filter(user=user)
+            return StudentProfile.objects.filter(user=user, user__is_deleted=False)
         elif user.role in ['STAFF', 'PLACEMENT']:
-            # Staff and Placement can see all profiles
-            return StudentProfile.objects.all().select_related('user')
+            # Staff and Placement can see all profiles (excluding deleted users)
+            return StudentProfile.objects.filter(user__is_deleted=False).select_related('user')
         
         return StudentProfile.objects.none()
     
@@ -436,9 +440,18 @@ class StudentProfileViewSet(viewsets.ModelViewSet):
     def update_profile(self, request):
         """
         Update current student's profile
+        STUDENTS CANNOT UPDATE CGPA - Only PLACEMENT can
         """
         try:
             profile = StudentProfile.objects.get(user=request.user)
+            
+            # SECURITY: Prevent students from updating CGPA
+            if 'cgpa' in request.data:
+                return Response(
+                    {'error': 'Students cannot update CGPA. Contact placement officer.'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
             serializer = StudentProfileSerializer(profile, data=request.data, partial=True)
             
             if serializer.is_valid():
@@ -553,7 +566,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     - STAFF: Can view all applications (read-only)
     - PLACEMENT: Can view and update application status
     """
-    queryset = Application.objects.all().select_related('student__user', 'drive')
+    queryset = Application.objects.filter(student__user__is_deleted=False).select_related('student__user', 'drive')
     serializer_class = ApplicationSerializer
     permission_classes = [IsAuthenticated]
     
@@ -569,8 +582,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 return Application.objects.none()
         
         elif user.role in ['STAFF', 'PLACEMENT']:
-            # Staff and Placement see all applications
-            queryset = Application.objects.all().select_related('student__user', 'drive')
+            # Staff and Placement see all applications (excluding deleted users)
+            queryset = Application.objects.filter(student__user__is_deleted=False).select_related('student__user', 'drive')
             
             # Filter by drive if provided
             drive_id = self.request.query_params.get('drive')
@@ -692,12 +705,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 @permission_classes([IsStaff])
 def staff_list_students(request):
     """
-    STAFF: List all students with search and filter
+    STAFF: List all students with search and filter (excluding deleted users)
     """
     search = request.query_params.get('search', '')
     department = request.query_params.get('department', '')
     
-    queryset = StudentProfile.objects.all().select_related('user')
+    queryset = StudentProfile.objects.filter(user__is_deleted=False).select_related('user')
     
     # Search by name or email
     if search:
@@ -737,34 +750,19 @@ def staff_get_student_detail(request, student_id):
 @permission_classes([IsStaff])
 def staff_update_student_academics(request, student_id):
     """
-    STAFF: Update student academic details (CGPA, Department, Skills)
-    CANNOT: Delete students, reset passwords, change roles
+    STAFF: Update student academic details (Department, Skills ONLY)
+    STAFF CANNOT UPDATE CGPA - Only PLACEMENT can update CGPA
     """
     try:
         profile = StudentProfile.objects.select_related('user').get(id=student_id)
         user = profile.user
         
-        # Only allow updating specific fields
-        allowed_fields = ['cgpa', 'skills', 'department']
-        
-        # Update CGPA
+        # SECURITY: Staff CANNOT update CGPA
         if 'cgpa' in request.data:
-            cgpa = request.data['cgpa']
-            if cgpa is not None:
-                try:
-                    cgpa_float = float(cgpa)
-                    if 0.0 <= cgpa_float <= 10.0:
-                        profile.cgpa = cgpa_float
-                    else:
-                        return Response(
-                            {'error': 'CGPA must be between 0.0 and 10.0'},
-                            status=status.HTTP_400_BAD_REQUEST
-                        )
-                except (ValueError, TypeError):
-                    return Response(
-                        {'error': 'Invalid CGPA value'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+            return Response(
+                {'error': 'Staff cannot update CGPA. Only placement officers can update CGPA.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # Update Skills
         if 'skills' in request.data:
@@ -913,6 +911,7 @@ def list_users(request):
 def create_user(request):
     """
     Create new user (STUDENT, STAFF, or PLACEMENT)
+    Date of birth is used as default password in DDMMYYYY format
     """
     try:
         username = request.data.get('username')
@@ -922,11 +921,12 @@ def create_user(request):
         last_name = request.data.get('last_name', '')
         role = request.data.get('role')
         department = request.data.get('department', '')
+        date_of_birth = request.data.get('date_of_birth')
         
         # Validation
-        if not username or not email or not password or not role:
+        if not username or not email or not role:
             return Response(
-                {'error': 'Username, email, password, and role are required'},
+                {'error': 'Username, email, and role are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -948,6 +948,24 @@ def create_user(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Generate password from date of birth if provided, otherwise use provided password
+        if date_of_birth:
+            try:
+                from datetime import datetime
+                # Parse date and convert to DDMMYYYY format
+                dob = datetime.strptime(date_of_birth, '%Y-%m-%d')
+                password = dob.strftime('%d%m%Y')
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid date format. Use YYYY-MM-DD'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        elif not password:
+            return Response(
+                {'error': 'Either password or date_of_birth is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         # Create user
         user = User.objects.create_user(
             username=username,
@@ -956,7 +974,8 @@ def create_user(request):
             first_name=first_name,
             last_name=last_name,
             role=role,
-            department=department
+            department=department,
+            date_of_birth=date_of_birth if date_of_birth else None
         )
         
         # If creating a student, also create their StudentProfile
@@ -976,7 +995,8 @@ def create_user(request):
                 'email': user.email,
                 'role': user.role,
                 'department': user.department
-            }
+            },
+            'default_password': password if date_of_birth else None
         }, status=status.HTTP_201_CREATED)
         
     except Exception as e:
@@ -1285,3 +1305,615 @@ def delete_user(request, user_id):
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ============================================
+# BULK STUDENT UPLOAD (PLACEMENT ONLY)
+# ============================================
+
+def generate_secure_password(length=12):
+    """Generate a secure random password"""
+    characters = string.ascii_letters + string.digits + string.punctuation
+    password = ''.join(secrets.choice(characters) for _ in range(length))
+    return password
+
+
+@api_view(['POST'])
+@permission_classes([IsPlacementOfficer])
+def bulk_upload_students(request):
+    """
+    Bulk upload students from Excel or CSV file
+    Only accessible by PLACEMENT role
+    
+    Supported file formats: .xlsx, .xls, .csv
+    
+    Expected columns:
+    - Name (or First Name + Last Name)
+    - Email (required)
+    - Department
+    - Date of Birth (YYYY-MM-DD or DD/MM/YYYY) - used as password in DDMMYYYY format
+    - CGPA (optional)
+    """
+    if 'file' not in request.FILES:
+        return Response(
+            {'error': 'No file provided'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    file = request.FILES['file']
+    
+    # Validate file extension
+    if not file.name.endswith(('.xlsx', '.xls', '.csv')):
+        return Response(
+            {'error': 'Invalid file format. Please upload Excel (.xlsx, .xls) or CSV (.csv) file'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        # Read file based on extension
+        if file.name.endswith('.csv'):
+            df = pd.read_csv(file)
+        else:
+            df = pd.read_excel(file)
+        
+        # Debug: Print dataframe info
+        print(f"\n=== File Upload Debug ===")
+        print(f"File name: {file.name}")
+        print(f"Columns found: {df.columns.tolist()}")
+        print(f"Total rows: {len(df)}")
+        print(f"First few rows:\n{df.head()}")
+        
+        # Normalize column names (case-insensitive)
+        df.columns = df.columns.str.strip().str.lower()
+        print(f"Normalized columns: {df.columns.tolist()}")
+        
+        # Validate required columns
+        required_columns = ['email']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        
+        if missing_columns:
+            return Response(
+                {'error': f'Missing required columns: {", ".join(missing_columns)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Initialize counters
+        total_records = len(df)
+        created_count = 0
+        skipped_count = 0
+        errors = []
+        created_students = []
+        
+        # Process each row
+        with transaction.atomic():
+            for index, row in df.iterrows():
+                try:
+                    # Debug: Print row data
+                    print(f"\n=== Processing Row {index + 2} ===")
+                    print(f"Row data: {row.to_dict()}")
+                    
+                    email = str(row.get('email', '')).strip()
+                    
+                    if not email or pd.isna(email):
+                        errors.append({
+                            'row': index + 2,  # +2 for Excel row (header + 0-index)
+                            'error': 'Email is required'
+                        })
+                        skipped_count += 1
+                        continue
+                    
+                    # Check if email already exists
+                    if User.objects.filter(email=email).exists():
+                        errors.append({
+                            'row': index + 2,
+                            'email': email,
+                            'error': 'Email already exists'
+                        })
+                        skipped_count += 1
+                        continue
+                    
+                    # Extract name
+                    if 'name' in df.columns:
+                        full_name = str(row.get('name', '')).strip()
+                        name_parts = full_name.split(' ', 1)
+                        first_name = name_parts[0] if name_parts else ''
+                        last_name = name_parts[1] if len(name_parts) > 1 else ''
+                    else:
+                        first_name = str(row.get('first name', row.get('firstname', ''))).strip()
+                        last_name = str(row.get('last name', row.get('lastname', ''))).strip()
+                    
+                    # Generate username from email
+                    username = email.split('@')[0]
+                    
+                    # Ensure unique username
+                    base_username = username
+                    counter = 1
+                    while User.objects.filter(username=username).exists():
+                        username = f"{base_username}{counter}"
+                        counter += 1
+                    
+                    # Extract other fields
+                    department = str(row.get('department', '')).strip()
+                    cgpa = row.get('cgpa', None)
+                    
+                    # Validate CGPA
+                    if cgpa and not pd.isna(cgpa):
+                        try:
+                            cgpa = float(cgpa)
+                            if cgpa < 0.0 or cgpa > 10.0:
+                                cgpa = None
+                        except (ValueError, TypeError):
+                            cgpa = None
+                    else:
+                        cgpa = None
+                    
+                    # Extract and process date of birth
+                    date_of_birth = row.get('date of birth', row.get('dob', row.get('dateofbirth', None)))
+                    password = None
+                    dob_str = None
+                    
+                    if date_of_birth and not pd.isna(date_of_birth):
+                        try:
+                            from datetime import datetime
+                            # Try to parse date (handles multiple formats)
+                            if isinstance(date_of_birth, str):
+                                # Try common formats including DD-MM-YYYY
+                                for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y', '%d-%m-%Y']:
+                                    try:
+                                        dob = datetime.strptime(date_of_birth.strip(), fmt)
+                                        password = dob.strftime('%d%m%Y')
+                                        dob_str = dob.strftime('%Y-%m-%d')
+                                        break
+                                    except ValueError:
+                                        continue
+                            elif hasattr(date_of_birth, 'strftime'):
+                                # Already a datetime object (from Excel)
+                                password = date_of_birth.strftime('%d%m%Y')
+                                dob_str = date_of_birth.strftime('%Y-%m-%d')
+                            
+                            # If still no password, try pandas to_datetime as last resort
+                            if not password:
+                                try:
+                                    dob = pd.to_datetime(date_of_birth, errors='coerce')
+                                    if not pd.isna(dob):
+                                        password = dob.strftime('%d%m%Y')
+                                        dob_str = dob.strftime('%Y-%m-%d')
+                                except Exception:
+                                    pass
+                        except Exception as e:
+                            # Log the error but continue
+                            print(f"Date parsing error for row {index + 2}: {str(e)}")
+                            pass
+                    
+                    # If no date of birth or parsing failed, generate secure password
+                    if not password:
+                        password = generate_secure_password()
+                    
+                    # Create user
+                    user = User.objects.create_user(
+                        username=username,
+                        email=email,
+                        password=password,
+                        first_name=first_name,
+                        last_name=last_name,
+                        role='STUDENT',
+                        department=department,
+                        date_of_birth=dob_str if dob_str else None
+                    )
+                    
+                    # Create student profile
+                    StudentProfile.objects.create(
+                        user=user,
+                        cgpa=cgpa,
+                        skills=[]
+                    )
+                    
+                    created_students.append({
+                        'username': username,
+                        'email': email,
+                        'password': password,  # Return password for first-time login
+                        'name': f"{first_name} {last_name}".strip(),
+                        'department': department,
+                        'date_of_birth': dob_str,
+                        'cgpa': cgpa
+                    })
+                    
+                    created_count += 1
+                    
+                except Exception as e:
+                    print(f"ERROR processing row {index + 2}: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    errors.append({
+                        'row': index + 2,
+                        'error': str(e)
+                    })
+                    skipped_count += 1
+        
+        return Response({
+            'success': True,
+            'message': 'Bulk upload completed',
+            'summary': {
+                'total_records': total_records,
+                'created': created_count,
+                'skipped': skipped_count,
+                'errors': len(errors)
+            },
+            'created_students': created_students,
+            'errors': errors[:50]  # Limit errors to first 50
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to process file: {str(e)}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+# ============================================
+# BULK STAFF UPLOAD (PLACEMENT ONLY)
+# ============================================
+
+@api_view(['POST'])
+@permission_classes([IsPlacementOfficer])
+def bulk_upload_staff(request):
+    """
+    Bulk upload staff from Excel or CSV file
+    Only accessible by PLACEMENT role
+    
+    Supported file formats: .xlsx, .xls, .csv
+    
+    Expected columns:
+    - Name (or First Name + Last Name)
+    - Email (required)
+    - Department
+    - Date of Birth (YYYY-MM-DD or DD/MM/YYYY) - used as password in DDMMYYYY format
+    - Designation (optional)
+    """
+    if 'file' not in request.FILES:
+        return Response(
+            {'error': 'No file provided'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    file = request.FILES['file']
+    
+    # Validate file extension
+    if not file.name.endswith(('.xlsx', '.xls', '.csv')):
+        return Response(
+            {'error': 'Invalid file format. Please upload Excel (.xlsx, .xls) or CSV (.csv) file'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        # Read file based on extension
+        if file.name.endswith('.csv'):
+            df = pd.read_csv(file)
+        else:
+            df = pd.read_excel(file)
+        
+        # Debug: Print dataframe info
+        print(f"\n=== Staff File Upload Debug ===")
+        print(f"File name: {file.name}")
+        print(f"Columns found: {df.columns.tolist()}")
+        print(f"Total rows: {len(df)}")
+        print(f"First few rows:\n{df.head()}")
+        
+        # Normalize column names (case-insensitive)
+        df.columns = df.columns.str.strip().str.lower()
+        print(f"Normalized columns: {df.columns.tolist()}")
+        
+        # Validate required columns
+        required_columns = ['email']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        
+        if missing_columns:
+            return Response(
+                {'error': f'Missing required columns: {", ".join(missing_columns)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Initialize counters
+        total_records = len(df)
+        created_count = 0
+        skipped_count = 0
+        errors = []
+        created_staff = []
+        
+        # Process each row
+        with transaction.atomic():
+            for index, row in df.iterrows():
+                try:
+                    # Debug: Print row data
+                    print(f"\n=== Processing Row {index + 2} ===")
+                    print(f"Row data: {row.to_dict()}")
+                    
+                    email = str(row.get('email', '')).strip()
+                    
+                    if not email or pd.isna(email):
+                        errors.append({
+                            'row': index + 2,
+                            'error': 'Email is required'
+                        })
+                        skipped_count += 1
+                        continue
+                    
+                    # Check if email already exists
+                    if User.objects.filter(email=email).exists():
+                        errors.append({
+                            'row': index + 2,
+                            'email': email,
+                            'error': 'Email already exists'
+                        })
+                        skipped_count += 1
+                        continue
+                    
+                    # Extract name
+                    if 'name' in df.columns:
+                        full_name = str(row.get('name', '')).strip()
+                        name_parts = full_name.split(' ', 1)
+                        first_name = name_parts[0] if name_parts else ''
+                        last_name = name_parts[1] if len(name_parts) > 1 else ''
+                    else:
+                        first_name = str(row.get('first name', row.get('firstname', ''))).strip()
+                        last_name = str(row.get('last name', row.get('lastname', ''))).strip()
+                    
+                    # Generate username from email
+                    username = email.split('@')[0]
+                    
+                    # Ensure unique username
+                    base_username = username
+                    counter = 1
+                    while User.objects.filter(username=username).exists():
+                        username = f"{base_username}{counter}"
+                        counter += 1
+                    
+                    # Extract other fields
+                    department = str(row.get('department', '')).strip()
+                    designation = str(row.get('designation', '')).strip()
+                    
+                    # Extract and process date of birth
+                    date_of_birth = row.get('date of birth', row.get('dob', row.get('dateofbirth', None)))
+                    password = None
+                    dob_str = None
+                    
+                    if date_of_birth and not pd.isna(date_of_birth):
+                        try:
+                            from datetime import datetime
+                            # Try to parse date (handles multiple formats)
+                            if isinstance(date_of_birth, str):
+                                # Try common formats including DD-MM-YYYY
+                                for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y', '%m/%d/%Y', '%d-%m-%Y']:
+                                    try:
+                                        dob = datetime.strptime(date_of_birth.strip(), fmt)
+                                        password = dob.strftime('%d%m%Y')
+                                        dob_str = dob.strftime('%Y-%m-%d')
+                                        break
+                                    except ValueError:
+                                        continue
+                            elif hasattr(date_of_birth, 'strftime'):
+                                # Already a datetime object (from Excel)
+                                password = date_of_birth.strftime('%d%m%Y')
+                                dob_str = date_of_birth.strftime('%Y-%m-%d')
+                            
+                            # If still no password, try pandas to_datetime as last resort
+                            if not password:
+                                try:
+                                    dob = pd.to_datetime(date_of_birth, errors='coerce')
+                                    if not pd.isna(dob):
+                                        password = dob.strftime('%d%m%Y')
+                                        dob_str = dob.strftime('%Y-%m-%d')
+                                except Exception:
+                                    pass
+                        except Exception as e:
+                            # Log the error but continue
+                            print(f"Date parsing error for row {index + 2}: {str(e)}")
+                            pass
+                    
+                    # If no date of birth or parsing failed, generate secure password
+                    if not password:
+                        password = generate_secure_password()
+                    
+                    # Create user with STAFF role
+                    user = User.objects.create_user(
+                        username=username,
+                        email=email,
+                        password=password,
+                        first_name=first_name,
+                        last_name=last_name,
+                        role='STAFF',
+                        department=department,
+                        date_of_birth=dob_str if dob_str else None
+                    )
+                    
+                    # Create staff profile
+                    from api.models import StaffProfile
+                    StaffProfile.objects.create(
+                        user=user,
+                        designation=designation if designation else None
+                    )
+                    
+                    created_staff.append({
+                        'username': username,
+                        'email': email,
+                        'password': password,
+                        'name': f"{first_name} {last_name}".strip(),
+                        'department': department,
+                        'designation': designation,
+                        'date_of_birth': dob_str
+                    })
+                    
+                    created_count += 1
+                    
+                except Exception as e:
+                    print(f"ERROR processing row {index + 2}: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    errors.append({
+                        'row': index + 2,
+                        'error': str(e)
+                    })
+                    skipped_count += 1
+        
+        return Response({
+            'success': True,
+            'message': 'Bulk staff upload completed',
+            'summary': {
+                'total_records': total_records,
+                'created': created_count,
+                'skipped': skipped_count,
+                'errors': len(errors)
+            },
+            'created_staff': created_staff,
+            'errors': errors[:50]  # Limit errors to first 50
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to process file: {str(e)}'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+# ============================================
+# PLACEMENT-ONLY: UPDATE STUDENT CGPA
+# ============================================
+
+@api_view(['PATCH'])
+@permission_classes([IsPlacementOfficer])
+def placement_update_student_cgpa(request, student_id):
+    """
+    PLACEMENT ONLY: Update student CGPA
+    Only placement officers can update CGPA
+    """
+    try:
+        profile = StudentProfile.objects.select_related('user').get(id=student_id)
+        
+        if 'cgpa' not in request.data:
+            return Response(
+                {'error': 'CGPA value is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        cgpa = request.data['cgpa']
+        
+        # Validate CGPA
+        if cgpa is not None:
+            try:
+                cgpa_float = float(cgpa)
+                if cgpa_float < 0.0 or cgpa_float > 10.0:
+                    return Response(
+                        {'error': 'CGPA must be between 0.0 and 10.0'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                profile.cgpa = cgpa_float
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': 'Invalid CGPA value'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        else:
+            profile.cgpa = None
+        
+        profile.save()
+        
+        serializer = StudentProfileSerializer(profile)
+        return Response({
+            'success': True,
+            'message': 'CGPA updated successfully',
+            'student': serializer.data
+        }, status=status.HTTP_200_OK)
+        
+    except StudentProfile.DoesNotExist:
+        return Response(
+            {'error': 'Student profile not found'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+# ============================================
+# PASSWORD CHANGE (ALL USERS)
+# ============================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    """
+    Change password for any authenticated user
+    Available for STUDENT, STAFF, and PLACEMENT roles
+    """
+    user = request.user
+    old_password = request.data.get('old_password')
+    new_password = request.data.get('new_password')
+    confirm_password = request.data.get('confirm_password')
+    
+    # Validation
+    if not old_password or not new_password or not confirm_password:
+        return Response(
+            {'error': 'All fields are required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Verify old password
+    if not user.check_password(old_password):
+        return Response(
+            {'error': 'Current password is incorrect'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check if new passwords match
+    if new_password != confirm_password:
+        return Response(
+            {'error': 'New passwords do not match'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check if new password is same as old
+    if old_password == new_password:
+        return Response(
+            {'error': 'New password must be different from current password'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Strong password validation
+    if len(new_password) < 8:
+        return Response(
+            {'error': 'Password must be at least 8 characters long'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check for at least one uppercase, one lowercase, one digit
+    has_upper = any(c.isupper() for c in new_password)
+    has_lower = any(c.islower() for c in new_password)
+    has_digit = any(c.isdigit() for c in new_password)
+    
+    if not (has_upper and has_lower and has_digit):
+        return Response(
+            {'error': 'Password must contain at least one uppercase letter, one lowercase letter, and one digit'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Update password
+    user.set_password(new_password)
+    user.is_first_login = False
+    user.save()
+    
+    return Response({
+        'success': True,
+        'message': 'Password changed successfully!'
+    }, status=status.HTTP_200_OK)
+
+
+# ============================================
+# FIRST LOGIN PASSWORD CHANGE (LEGACY - kept for compatibility)
+# ============================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_first_login_password(request):
+    """
+    Change password for first-time login users
+    Enforces strong password policy
+    """
+    # Redirect to the main change_password function
+    return change_password(request)

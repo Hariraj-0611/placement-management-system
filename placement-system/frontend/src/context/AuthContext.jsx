@@ -98,7 +98,7 @@ export const AuthProvider = ({ children }) => {
         
         return { 
           success: true, 
-          role: data.user.role 
+          role: data.user.role
         };
       } else {
         return { 

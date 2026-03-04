@@ -71,6 +71,14 @@ export const uploadUserProfilePhoto = (file) => {
 
 export const updateUserProfile = (data) => api.put('/update-profile/', data);
 
+// Change Password (All Users)
+export const changePassword = (oldPassword, newPassword, confirmPassword) => 
+  api.post('/change-password/', { 
+    old_password: oldPassword, 
+    new_password: newPassword, 
+    confirm_password: confirmPassword 
+  });
+
 // ============================================
 // DASHBOARD APIs
 // ============================================
@@ -134,6 +142,18 @@ export const deleteUser = (userId) => {
   return api.delete(`/users/${userId}/delete/`);
 };
 
+// Bulk Upload Students
+export const bulkUploadStudents = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post('/placement/bulk-upload-students/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
+// Update Student CGPA (Placement Only)
+export const updateStudentCGPA = (studentId, cgpa) => api.patch(`/placement/students/${studentId}/update-cgpa/`, { cgpa });
+
 // ============================================
 // STUDENT VERIFICATION APIs (Placement Only)
 // ============================================
@@ -153,5 +173,18 @@ export const staffVerifyEligibility = (studentId, isEligible, remarks = '') =>
   api.post(`/staff/students/${studentId}/verify-eligibility/`, { is_eligible: isEligible, remarks });
 export const staffListDrives = (params = {}) => api.get('/staff/drives/', { params });
 export const staffListApplications = (params = {}) => api.get('/staff/applications/', { params });
+
+// ============================================
+// BULK UPLOAD APIs
+// ============================================
+export const bulkUploadStaff = (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.post('/placement/bulk-upload-staff/', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+};
 
 export default api;

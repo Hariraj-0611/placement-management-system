@@ -21,6 +21,10 @@ urlpatterns = [
     path('forgot-password/', views.forgot_password, name='forgot-password'),
     path('reset-password/', views.reset_password, name='reset-password'),
     
+    # Password Change (All Users)
+    path('change-password/', views.change_password, name='change-password'),
+    path('change-first-login-password/', views.change_first_login_password, name='change-first-login-password'),
+    
     # Profile Management (All Users)
     path('upload-profile-photo/', views.upload_user_profile_photo, name='upload-profile-photo'),
     path('update-profile/', views.update_user_profile, name='update-profile'),
@@ -51,6 +55,13 @@ urlpatterns = [
     path('users/<int:user_id>/reset-password/', views.reset_user_password, name='reset-user-password'),
     path('users/<int:user_id>/toggle-status/', views.toggle_user_status, name='toggle-user-status'),
     path('users/<int:user_id>/delete/', views.delete_user, name='delete-user'),
+    
+    # Bulk Upload
+    path('placement/bulk-upload-students/', views.bulk_upload_students, name='bulk-upload-students'),
+    path('placement/bulk-upload-staff/', views.bulk_upload_staff, name='bulk-upload-staff'),
+    
+    # CGPA Update (Placement Only)
+    path('placement/students/<int:student_id>/update-cgpa/', views.placement_update_student_cgpa, name='placement-update-cgpa'),
     
     # ============================================
     # STUDENT VERIFICATION (Placement Officer Only)
