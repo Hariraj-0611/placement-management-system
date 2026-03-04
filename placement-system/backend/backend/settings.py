@@ -81,6 +81,12 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 #         }
 #     }
 # }
+DATABASES = {
+    'default': dj_database_url.config(
+        default=os.environ.get("mysql://root:ulhcxNGGYxYGtdBxHrZhOUFjQiiHvIcu@nozomi.proxy.rlwy.net:55355/railway"),
+        conn_max_age=600,
+    )
+}
 
 import os
 
