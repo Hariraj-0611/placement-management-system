@@ -298,9 +298,13 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # ---------------------------
 # Database (MySQL using dj-database-url)
 # ---------------------------
+
+import os
+import dj_database_url
+
 DATABASES = {
     'default': dj_database_url.config(
-        default=os.environ.get('mysql://root:AUSEbfKwknXYAqtDXzyEbRPwOEYREMgt@ballast.proxy.rlwy.net:26164/railway'),
+        default=os.environ.get('mysql://root:AUSEbfKwknXYAqtDXzyEbRPwOEYREMgt@ballast.proxy.rlwy.net:26164/railway'),  # <-- 'MYSQL_URL' environment variable name
         conn_max_age=600,
     )
 }
