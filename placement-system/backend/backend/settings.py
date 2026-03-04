@@ -300,7 +300,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # ---------------------------
 DATABASES = {
     'default': dj_database_url.config(
-        default=os.environ.get('mysql://root:ulhcxNGGYxYGtdBxHrZhOUFjQiiHvIcu@mysql.railway.internal:3306/placement'),
+        default=os.environ.get('mysql://root:AUSEbfKwknXYAqtDXzyEbRPwOEYREMgt@mysql.railway.internal:3306/railway'),
         conn_max_age=600,
     )
 }
