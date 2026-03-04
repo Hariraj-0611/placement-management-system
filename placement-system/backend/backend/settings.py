@@ -67,18 +67,31 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 
 # Database - MySQL (Local)
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': 'placement',
+#         'USER': 'root',
+#         'PASSWORD': 'root',  # Your local MySQL password
+#         'HOST': 'localhost',
+#         'PORT': '3306',
+#         'OPTIONS': {
+#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+#             'charset': 'utf8mb4',
+#         }
+#     }
+# }
+
+import os
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'placement',
-        'USER': 'root',
-        'PASSWORD': 'root',  # Your local MySQL password
-        'HOST': 'localhost',
-        'PORT': '3306',
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-            'charset': 'utf8mb4',
-        }
+        'NAME': os.environ.get('placement'),
+        'USER': os.environ.get('root'),
+        'PASSWORD': os.environ.get('root'),
+        'HOST': os.environ.get('localhost'),
+        'PORT': os.environ.get('3306'),
     }
 }
 
