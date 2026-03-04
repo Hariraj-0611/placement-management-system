@@ -414,3 +414,20 @@ DEFAULT_FROM_EMAIL = 'noreply@placementsystem.com'
 # EMAIL_USE_TLS = True
 # EMAIL_HOST_USER = os.environ.get('EMAIL_USER')
 # EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASSWORD')
+
+CSRF_TRUSTED_ORIGINS = ['localhost', '127.0.0.1']
+
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:8000',   # scheme + host
+    'http://127.0.0.1:8000'
+]
+
+
+CSRF_TRUSTED_ORIGINS.append('https://placement-management-system-rxmg.onrender.com')
+
+
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:3000',   # frontend react port
+    'http://127.0.0.1:3000',
+    'https://yourapp.onrender.com'  # deployed frontend
+]
