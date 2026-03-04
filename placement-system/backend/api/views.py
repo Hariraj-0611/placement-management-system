@@ -1262,7 +1262,7 @@ def approve_student_profile(request, student_id):
 @permission_classes([IsPlacementOfficer])
 def delete_user(request, user_id):
     """
-    Delete user (soft delete by marking as deleted)
+    Delete user permanently from database (hard delete)
     """
     print(f"=== DELETE USER CALLED ===")
     print(f"User ID: {user_id}")
@@ -1280,15 +1280,17 @@ def delete_user(request, user_id):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Soft delete - mark as deleted (different from deactivate)
-        print(f"Marking user as deleted: {user.username}")
-        user.is_deleted = True
-        user.save()
-        print(f"User {user.username} marked as deleted successfully")
+        # Hard delete - permanently remove from database
+        # Related records (StudentProfile, Applications) will be cascade deleted automatically
+        username = user.username
+        email = user.email
+        print(f"Permanently deleting user: {username} ({email})")
+        user.delete()
+        print(f"User {username} permanently deleted from database")
         
         return Response({
             'success': True,
-            'message': 'User deleted successfully'
+            'message': f'User {email} permanently deleted from database'
         }, status=status.HTTP_200_OK)
         
     except User.DoesNotExist:
