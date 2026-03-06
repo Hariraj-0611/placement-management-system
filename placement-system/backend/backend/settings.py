@@ -64,20 +64,36 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 
 # Database - MySQL (Local)
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': 'placement',
+#         'USER': 'root',
+#         'PASSWORD': 'dMXmNAwNfmTPhyybvIwOgyFXOmfCaVVI',  # Your local MySQL password
+#         'HOST': 'localhost',
+#         'PORT': '3306',
+#         'OPTIONS': {
+#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+#             'charset': 'utf8mb4',
+#         }
+#     }
+# }
+
+import dj_database_url
+import pymysql
+
+pymysql.install_as_MySQLdb()
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'placement',
-        'USER': 'root',
-        'PASSWORD': 'root',  # Your local MySQL password
-        'HOST': 'localhost',
-        'PORT': '3306',
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-            'charset': 'utf8mb4',
-        }
-    }
+    'default': dj_database_url.config(
+        default=os.getenv("mysql://root:dMXmNAwNfmTPhyybvIwOgyFXOmfCaVVI@mysql.railway.internal:3306/railway")
+    )
 }
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+ALLOWED_HOSTS = ['*']
+
+
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
