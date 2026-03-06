@@ -44,6 +44,7 @@ urlpatterns = [
     path('staff/students/<int:student_id>/update-academics/', views.staff_update_student_academics, name='staff-update-academics'),
     path('staff/students/<int:student_id>/verify-eligibility/', views.staff_verify_eligibility, name='staff-verify-eligibility'),
     path('staff/drives/', views.staff_list_drives, name='staff-list-drives'),
+    path('staff/companies/', views.staff_get_companies, name='staff-get-companies'),
     path('staff/applications/', views.staff_list_applications, name='staff-list-applications'),
     
     # ============================================

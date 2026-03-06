@@ -172,6 +172,7 @@ export const staffUpdateStudentAcademics = (studentId, data) =>
 export const staffVerifyEligibility = (studentId, isEligible, remarks = '') => 
   api.post(`/staff/students/${studentId}/verify-eligibility/`, { is_eligible: isEligible, remarks });
 export const staffListDrives = (params = {}) => api.get('/staff/drives/', { params });
+export const staffGetCompanies = () => api.get('/staff/companies/');
 export const staffListApplications = (params = {}) => api.get('/staff/applications/', { params });
 
 // ============================================

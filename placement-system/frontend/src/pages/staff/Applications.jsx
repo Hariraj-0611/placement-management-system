@@ -1,21 +1,37 @@
 import { useState, useEffect } from 'react';
-import { staffListApplications } from '../../services/api';
+import { staffListApplications, staffGetCompanies } from '../../services/api';
 import toast from 'react-hot-toast';
 
 function StaffApplications() {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
+  const [companyFilter, setCompanyFilter] = useState('');
+  const [companies, setCompanies] = useState([]);
+
+  useEffect(() => {
+    fetchCompanies();
+  }, []);
 
   useEffect(() => {
     fetchApplications();
-  }, [statusFilter]);
+  }, [statusFilter, companyFilter]);
+
+  const fetchCompanies = async () => {
+    try {
+      const response = await staffGetCompanies();
+      setCompanies(response.data.companies);
+    } catch (error) {
+      console.error('Failed to load companies:', error);
+    }
+  };
 
   const fetchApplications = async () => {
     try {
       setLoading(true);
       const params = {};
       if (statusFilter) params.status = statusFilter;
+      if (companyFilter) params.company = companyFilter;
       
       const response = await staffListApplications(params);
       setApplications(response.data);
@@ -54,12 +70,12 @@ function StaffApplications() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">Applications (Read-Only)</h1>
-        <p className="mt-2 text-gray-600">View all student applications</p>
+        <p className="mt-2 text-gray-600">View student applications from your department</p>
       </div>
 
       {/* Filter */}
       <div className="bg-white shadow rounded-lg p-4 mb-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <label className="text-sm font-medium text-gray-700">
             Filter by Status:
           </label>
@@ -73,6 +89,22 @@ function StaffApplications() {
             <option value="Shortlisted">Shortlisted</option>
             <option value="Selected">Selected</option>
             <option value="Rejected">Rejected</option>
+          </select>
+
+          <label className="text-sm font-medium text-gray-700 ml-4">
+            Filter by Company:
+          </label>
+          <select
+            value={companyFilter}
+            onChange={(e) => setCompanyFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
+          >
+            <option value="">All Companies</option>
+            {companies.map((company) => (
+              <option key={company} value={company}>
+                {company}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -186,7 +218,8 @@ function StaffApplications() {
           </div>
           <div className="ml-3">
             <p className="text-sm text-blue-700">
-              <strong>Read-Only Access:</strong> You can view all applications but cannot update their status. 
+              <strong>Department Access:</strong> You can only view applications from students in your department. 
+              <strong> Read-Only Access:</strong> You can view all applications but cannot update their status. 
               Only Placement Officers can change application status.
             </p>
           </div>

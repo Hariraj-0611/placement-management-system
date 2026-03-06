@@ -369,16 +369,16 @@ def student_dashboard(request):
 @permission_classes([IsStaff])
 def staff_dashboard(request):
     """
-    Staff dashboard - read-only view
+    Staff dashboard - read-only view (shows only active, non-deleted users)
     """
     return Response({
-        'total_students': StudentProfile.objects.filter(user__is_deleted=False).count(),
+        'total_students': StudentProfile.objects.filter(user__is_deleted=False, user__is_active=True).count(),
         'total_drives': CompanyDrive.objects.count(),
         'active_drives': CompanyDrive.objects.filter(status='active').count(),
-        'total_applications': Application.objects.filter(student__user__is_deleted=False).count(),
-        'pending_applications': Application.objects.filter(student__user__is_deleted=False, status='Applied').count(),
-        'shortlisted_applications': Application.objects.filter(student__user__is_deleted=False, status='Shortlisted').count(),
-        'selected_applications': Application.objects.filter(student__user__is_deleted=False, status='Selected').count(),
+        'total_applications': Application.objects.filter(student__user__is_deleted=False, student__user__is_active=True).count(),
+        'pending_applications': Application.objects.filter(student__user__is_deleted=False, student__user__is_active=True, status='Applied').count(),
+        'shortlisted_applications': Application.objects.filter(student__user__is_deleted=False, student__user__is_active=True, status='Shortlisted').count(),
+        'selected_applications': Application.objects.filter(student__user__is_deleted=False, student__user__is_active=True, status='Selected').count(),
     }, status=status.HTTP_200_OK)
 
 
@@ -386,19 +386,19 @@ def staff_dashboard(request):
 @permission_classes([IsPlacementOfficer])
 def placement_dashboard(request):
     """
-    Placement officer dashboard with full statistics
+    Placement officer dashboard with full statistics (shows only active, non-deleted users)
     """
     return Response({
-        'total_students': StudentProfile.objects.filter(user__is_deleted=False).count(),
+        'total_students': StudentProfile.objects.filter(user__is_deleted=False, user__is_active=True).count(),
         'total_drives': CompanyDrive.objects.count(),
         'active_drives': CompanyDrive.objects.filter(status='active').count(),
         'closed_drives': CompanyDrive.objects.filter(status='closed').count(),
         'completed_drives': CompanyDrive.objects.filter(status='completed').count(),
-        'total_applications': Application.objects.filter(student__user__is_deleted=False).count(),
-        'pending_applications': Application.objects.filter(student__user__is_deleted=False, status='Applied').count(),
-        'shortlisted_applications': Application.objects.filter(student__user__is_deleted=False, status='Shortlisted').count(),
-        'selected_applications': Application.objects.filter(student__user__is_deleted=False, status='Selected').count(),
-        'rejected_applications': Application.objects.filter(student__user__is_deleted=False, status='Rejected').count(),
+        'total_applications': Application.objects.filter(student__user__is_deleted=False, student__user__is_active=True).count(),
+        'pending_applications': Application.objects.filter(student__user__is_deleted=False, student__user__is_active=True, status='Applied').count(),
+        'shortlisted_applications': Application.objects.filter(student__user__is_deleted=False, student__user__is_active=True, status='Shortlisted').count(),
+        'selected_applications': Application.objects.filter(student__user__is_deleted=False, student__user__is_active=True, status='Selected').count(),
+        'rejected_applications': Application.objects.filter(student__user__is_deleted=False, student__user__is_active=True, status='Rejected').count(),
         'my_drives': CompanyDrive.objects.filter(created_by=request.user).count(),
     }, status=status.HTTP_200_OK)
 
@@ -566,7 +566,10 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     - STAFF: Can view all applications (read-only)
     - PLACEMENT: Can view and update application status
     """
-    queryset = Application.objects.filter(student__user__is_deleted=False).select_related('student__user', 'drive')
+    queryset = Application.objects.filter(
+        student__user__is_deleted=False,
+        student__user__is_active=True
+    ).select_related('student__user', 'drive')
     serializer_class = ApplicationSerializer
     permission_classes = [IsAuthenticated]
     
@@ -582,8 +585,11 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 return Application.objects.none()
         
         elif user.role in ['STAFF', 'PLACEMENT']:
-            # Staff and Placement see all applications (excluding deleted users)
-            queryset = Application.objects.filter(student__user__is_deleted=False).select_related('student__user', 'drive')
+            # Staff and Placement see all applications (excluding deleted/inactive users)
+            queryset = Application.objects.filter(
+                student__user__is_deleted=False,
+                student__user__is_active=True
+            ).select_related('student__user', 'drive')
             
             # Filter by drive if provided
             drive_id = self.request.query_params.get('drive')
@@ -705,12 +711,16 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 @permission_classes([IsStaff])
 def staff_list_students(request):
     """
-    STAFF: List all students with search and filter (excluding deleted users)
+    STAFF: List students from their department only (excluding deleted users)
     """
     search = request.query_params.get('search', '')
     department = request.query_params.get('department', '')
     
-    queryset = StudentProfile.objects.filter(user__is_deleted=False).select_related('user')
+    # Filter by staff's department - only show students from same department
+    queryset = StudentProfile.objects.filter(
+        user__is_deleted=False,
+        user__department=request.user.department
+    ).select_related('user')
     
     # Search by name or email
     if search:
@@ -721,7 +731,7 @@ def staff_list_students(request):
             Q(user__last_name__icontains=search)
         )
     
-    # Filter by department
+    # Additional department filter (if provided, but already filtered by staff's department)
     if department:
         queryset = queryset.filter(user__department=department)
     
@@ -733,15 +743,18 @@ def staff_list_students(request):
 @permission_classes([IsStaff])
 def staff_get_student_detail(request, student_id):
     """
-    STAFF: Get individual student profile details
+    STAFF: Get individual student profile details (same department only)
     """
     try:
-        profile = StudentProfile.objects.select_related('user').get(id=student_id)
+        profile = StudentProfile.objects.select_related('user').get(
+            id=student_id,
+            user__department=request.user.department
+        )
         serializer = StudentProfileSerializer(profile)
         return Response(serializer.data, status=status.HTTP_200_OK)
     except StudentProfile.DoesNotExist:
         return Response(
-            {'error': 'Student profile not found'},
+            {'error': 'Student profile not found or access denied'},
             status=status.HTTP_404_NOT_FOUND
         )
 
@@ -750,11 +763,14 @@ def staff_get_student_detail(request, student_id):
 @permission_classes([IsStaff])
 def staff_update_student_academics(request, student_id):
     """
-    STAFF: Update student academic details (Department, Skills ONLY)
+    STAFF: Update student academic details (Department, Skills ONLY) - same department only
     STAFF CANNOT UPDATE CGPA - Only PLACEMENT can update CGPA
     """
     try:
-        profile = StudentProfile.objects.select_related('user').get(id=student_id)
+        profile = StudentProfile.objects.select_related('user').get(
+            id=student_id,
+            user__department=request.user.department
+        )
         user = profile.user
         
         # SECURITY: Staff CANNOT update CGPA
@@ -791,7 +807,7 @@ def staff_update_student_academics(request, student_id):
         
     except StudentProfile.DoesNotExist:
         return Response(
-            {'error': 'Student profile not found'},
+            {'error': 'Student profile not found or access denied'},
             status=status.HTTP_404_NOT_FOUND
         )
 
@@ -800,10 +816,13 @@ def staff_update_student_academics(request, student_id):
 @permission_classes([IsStaff])
 def staff_verify_eligibility(request, student_id):
     """
-    STAFF: Mark student as Eligible / Not Eligible
+    STAFF: Mark student as Eligible / Not Eligible (same department only)
     """
     try:
-        profile = StudentProfile.objects.get(id=student_id)
+        profile = StudentProfile.objects.get(
+            id=student_id,
+            user__department=request.user.department
+        )
         is_eligible = request.data.get('is_eligible', False)
         remarks = request.data.get('remarks', '')
         
@@ -819,6 +838,10 @@ def staff_verify_eligibility(request, student_id):
         }, status=status.HTTP_200_OK)
         
     except StudentProfile.DoesNotExist:
+        return Response(
+            {'error': 'Student profile not found or access denied'},
+            status=status.HTTP_404_NOT_FOUND
+        )
         return Response(
             {'error': 'Student profile not found'},
             status=status.HTTP_404_NOT_FOUND
@@ -846,20 +869,42 @@ def staff_list_drives(request):
 
 @api_view(['GET'])
 @permission_classes([IsStaff])
+def staff_get_companies(request):
+    """
+    STAFF: Get list of unique companies for filter dropdown
+    """
+    companies = CompanyDrive.objects.values_list('company_name', flat=True).distinct().order_by('company_name')
+    return Response({'companies': list(companies)}, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsStaff])
 def staff_list_applications(request):
     """
-    STAFF: View all applications (read-only)
+    STAFF: View applications from students in their department only (read-only)
+    Filters: drive, status, company
+    Excludes deleted and inactive users
     """
     drive_id = request.query_params.get('drive')
     status_filter = request.query_params.get('status')
+    company_filter = request.query_params.get('company')
     
-    queryset = Application.objects.all().select_related('student__user', 'drive')
+    # Filter by staff's department - only show students from same department
+    # Exclude deleted and inactive users
+    queryset = Application.objects.filter(
+        student__user__department=request.user.department,
+        student__user__is_deleted=False,
+        student__user__is_active=True
+    ).select_related('student__user', 'drive')
     
     if drive_id:
         queryset = queryset.filter(drive_id=drive_id)
     
     if status_filter:
         queryset = queryset.filter(status=status_filter)
+    
+    if company_filter:
+        queryset = queryset.filter(drive__company_name__icontains=company_filter)
     
     queryset = queryset.order_by('-applied_at')
     
