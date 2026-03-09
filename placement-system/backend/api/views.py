@@ -559,6 +559,45 @@ class CompanyDriveViewSet(viewsets.ModelViewSet):
         serializer.save(created_by=self.request.user)
 
 
+    @action(detail=True, methods=['get'], permission_classes=[IsStudent])
+    def check_eligibility(self, request, pk=None):
+        """
+        Check if student is eligible for a specific drive (before applying)
+        """
+        try:
+            profile = StudentProfile.objects.get(user=request.user)
+            drive = self.get_object()  # Get the drive by pk
+
+            # Check eligibility
+            is_eligible, reasons = profile.check_eligibility_for_drive(drive)
+
+            return Response({
+                'eligible': is_eligible,
+                'reasons': reasons,
+                'drive': {
+                    'id': drive.id,
+                    'company_name': drive.company_name,
+                    'job_role': drive.job_role,
+                    'minimum_cgpa': drive.minimum_cgpa,
+                    'required_skills': drive.required_skills,
+                },
+                'student': {
+                    'cgpa': profile.cgpa,
+                    'backlog_count': profile.backlog_count,
+                    'skills': profile.skills,
+                    'resume_uploaded': bool(profile.resume),
+                    'profile_approved': profile.profile_approved,
+                }
+            }, status=status.HTTP_200_OK)
+
+        except StudentProfile.DoesNotExist:
+            return Response(
+                {'error': 'Student profile not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+
 class ApplicationViewSet(viewsets.ModelViewSet):
     """
     ViewSet for Applications
@@ -616,7 +655,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     
     def create(self, request, *args, **kwargs):
         """
-        Student applies for a drive
+        Student applies for a drive with automated eligibility checking
         """
         try:
             profile = StudentProfile.objects.get(user=request.user)
@@ -644,10 +683,16 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Check eligibility (CGPA)
-            if profile.cgpa and profile.cgpa < drive.minimum_cgpa:
+            # Automated eligibility check
+            is_eligible, reasons = profile.check_eligibility_for_drive(drive)
+            
+            if not is_eligible:
                 return Response(
-                    {'error': f'Your CGPA ({profile.cgpa}) does not meet the minimum requirement ({drive.minimum_cgpa})'},
+                    {
+                        'error': 'You do not meet the eligibility criteria for this drive',
+                        'reasons': reasons,
+                        'eligible': False
+                    },
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
@@ -661,8 +706,13 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             serializer = ApplicationSerializer(application)
             return Response(
                 {
+                    'success': True,
                     'message': 'Application submitted successfully',
-                    'application': serializer.data
+                    'application': serializer.data,
+                    'eligibility_check': {
+                        'eligible': True,
+                        'reasons': reasons
+                    }
                 },
                 status=status.HTTP_201_CREATED
             )
@@ -716,11 +766,29 @@ def staff_list_students(request):
     search = request.query_params.get('search', '')
     department = request.query_params.get('department', '')
     
+    # Debug logging
+    print(f"\n=== STAFF LIST STUDENTS DEBUG ===")
+    print(f"Staff User: {request.user.username}")
+    print(f"Staff Department: {request.user.department}")
+    print(f"Search: {search}")
+    print(f"Department Filter: {department}")
+    
+    # Check if staff has department
+    if not request.user.department:
+        print("WARNING: Staff has no department assigned!")
+        return Response({
+            'error': 'Your account does not have a department assigned. Please contact the administrator.',
+            'students': []
+        }, status=status.HTTP_200_OK)
+    
     # Filter by staff's department - only show students from same department
     queryset = StudentProfile.objects.filter(
         user__is_deleted=False,
+        user__is_active=True,
         user__department=request.user.department
     ).select_related('user')
+    
+    print(f"Total students in department '{request.user.department}': {queryset.count()}")
     
     # Search by name or email
     if search:
@@ -730,12 +798,16 @@ def staff_list_students(request):
             Q(user__first_name__icontains=search) |
             Q(user__last_name__icontains=search)
         )
+        print(f"After search filter: {queryset.count()}")
     
     # Additional department filter (if provided, but already filtered by staff's department)
     if department:
         queryset = queryset.filter(user__department=department)
+        print(f"After department filter: {queryset.count()}")
     
     serializer = StudentProfileSerializer(queryset, many=True)
+    print(f"Returning {len(serializer.data)} students")
+    print("=" * 40)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -767,10 +839,42 @@ def staff_update_student_academics(request, student_id):
     STAFF CANNOT UPDATE CGPA - Only PLACEMENT can update CGPA
     """
     try:
-        profile = StudentProfile.objects.select_related('user').get(
-            id=student_id,
-            user__department=request.user.department
-        )
+        # First check if student exists
+        try:
+            profile = StudentProfile.objects.select_related('user').get(id=student_id)
+        except StudentProfile.DoesNotExist:
+            return Response(
+                {'error': 'Student profile not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check department access
+        staff_dept = request.user.department
+        student_dept = profile.user.department
+        
+        print(f"=== STAFF UPDATE ACADEMICS DEBUG ===")
+        print(f"Staff: {request.user.username} (Dept: {staff_dept})")
+        print(f"Student: {profile.user.username} (Dept: {student_dept})")
+        print(f"Request data: {request.data}")
+        
+        if not staff_dept:
+            return Response(
+                {'error': 'Your account does not have a department assigned. Please contact the administrator.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if not student_dept:
+            return Response(
+                {'error': 'This student does not have a department assigned. Please contact the placement officer.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if staff_dept != student_dept:
+            return Response(
+                {'error': f'Access denied. You can only update students from your department ({staff_dept}). This student is in {student_dept}.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         user = profile.user
         
         # SECURITY: Staff CANNOT update CGPA
@@ -805,10 +909,13 @@ def staff_update_student_academics(request, student_id):
             'student': serializer.data
         }, status=status.HTTP_200_OK)
         
-    except StudentProfile.DoesNotExist:
+    except Exception as e:
+        print(f"ERROR in staff_update_student_academics: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return Response(
-            {'error': 'Student profile not found or access denied'},
-            status=status.HTTP_404_NOT_FOUND
+            {'error': f'Failed to update student: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
 
@@ -819,10 +926,41 @@ def staff_verify_eligibility(request, student_id):
     STAFF: Mark student as Eligible / Not Eligible (same department only)
     """
     try:
-        profile = StudentProfile.objects.get(
-            id=student_id,
-            user__department=request.user.department
-        )
+        # First check if student exists
+        try:
+            profile = StudentProfile.objects.select_related('user').get(id=student_id)
+        except StudentProfile.DoesNotExist:
+            return Response(
+                {'error': 'Student profile not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Check department access
+        staff_dept = request.user.department
+        student_dept = profile.user.department
+        
+        print(f"=== STAFF VERIFY ELIGIBILITY DEBUG ===")
+        print(f"Staff: {request.user.username} (Dept: {staff_dept})")
+        print(f"Student: {profile.user.username} (Dept: {student_dept})")
+        
+        if not staff_dept:
+            return Response(
+                {'error': 'Your account does not have a department assigned. Please contact the administrator.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if not student_dept:
+            return Response(
+                {'error': 'This student does not have a department assigned. Please contact the placement officer.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if staff_dept != student_dept:
+            return Response(
+                {'error': f'Access denied. You can only verify students from your department ({staff_dept}). This student is in {student_dept}.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         is_eligible = request.data.get('is_eligible', False)
         remarks = request.data.get('remarks', '')
         
@@ -837,14 +975,13 @@ def staff_verify_eligibility(request, student_id):
             'remarks': remarks
         }, status=status.HTTP_200_OK)
         
-    except StudentProfile.DoesNotExist:
+    except Exception as e:
+        print(f"ERROR in staff_verify_eligibility: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return Response(
-            {'error': 'Student profile not found or access denied'},
-            status=status.HTTP_404_NOT_FOUND
-        )
-        return Response(
-            {'error': 'Student profile not found'},
-            status=status.HTTP_404_NOT_FOUND
+            {'error': f'Failed to verify eligibility: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
 
@@ -1023,11 +1160,28 @@ def create_user(request):
             date_of_birth=date_of_birth if date_of_birth else None
         )
         
-        # If creating a student, also create their StudentProfile
+        # If creating a student, also create their StudentProfile with CGPA
         if role == 'STUDENT':
+            cgpa = request.data.get('cgpa')
+            
+            # Validate CGPA if provided
+            if cgpa is not None:
+                try:
+                    cgpa = float(cgpa)
+                    if cgpa < 0.0 or cgpa > 10.0:
+                        return Response(
+                            {'error': 'CGPA must be between 0.0 and 10.0'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                except (ValueError, TypeError):
+                    return Response(
+                        {'error': 'Invalid CGPA value'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
             StudentProfile.objects.create(
                 user=user,
-                cgpa=None,
+                cgpa=cgpa,
                 skills=[]
             )
         

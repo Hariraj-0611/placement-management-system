@@ -139,6 +139,57 @@ class StudentProfile(models.Model):
         if self.resume:
             return os.path.basename(self.resume.name)
         return None
+    
+    def check_eligibility_for_drive(self, drive):
+        """
+        Automatically check if student meets eligibility criteria for a company drive
+        Returns: (is_eligible: bool, reasons: list)
+        """
+        reasons = []
+        is_eligible = True
+        
+        # Check 1: CGPA requirement
+        if self.cgpa is None:
+            is_eligible = False
+            reasons.append("CGPA not updated in profile")
+        elif self.cgpa < drive.minimum_cgpa:
+            is_eligible = False
+            reasons.append(f"CGPA {self.cgpa} is below minimum requirement of {drive.minimum_cgpa}")
+        
+        # Check 2: Backlog count (assuming no backlogs allowed, can be customized)
+        if self.backlog_count > 0:
+            is_eligible = False
+            reasons.append(f"Has {self.backlog_count} active backlog(s)")
+        
+        # Check 3: Required skills
+        if drive.required_skills:
+            student_skills = [skill.lower() for skill in self.skills] if self.skills else []
+            required_skills = [skill.lower() for skill in drive.required_skills] if drive.required_skills else []
+            
+            missing_skills = [skill for skill in required_skills if skill not in student_skills]
+            if missing_skills:
+                is_eligible = False
+                reasons.append(f"Missing required skills: {', '.join(missing_skills)}")
+        
+        # Check 4: Profile completion
+        if not self.resume:
+            is_eligible = False
+            reasons.append("Resume not uploaded")
+        
+        if not self.register_number:
+            is_eligible = False
+            reasons.append("Register number not provided")
+        
+        # Check 5: Profile approval by placement officer
+        if not self.profile_approved:
+            is_eligible = False
+            reasons.append("Profile not approved by placement officer")
+        
+        # If eligible, add success message
+        if is_eligible:
+            reasons.append("All eligibility criteria met")
+        
+        return is_eligible, reasons
 
 
 class StaffProfile(models.Model):

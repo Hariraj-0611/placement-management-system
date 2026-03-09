@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getApplications, updateApplicationStatus } from '../../services/api';
 import toast from 'react-hot-toast';
+import * as XLSX from 'xlsx';
 
 function ManageApplications() {
   const [applications, setApplications] = useState([]);
@@ -10,6 +11,8 @@ function ManageApplications() {
   const [selectedApp, setSelectedApp] = useState(null);
   const [newStatus, setNewStatus] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [companies, setCompanies] = useState([]);
+  const [selectedCompany, setSelectedCompany] = useState('');
 
   useEffect(() => {
     fetchApplications();
@@ -33,6 +36,10 @@ function ManageApplications() {
       }
       
       setApplications(apps);
+      
+      // Extract unique companies
+      const uniqueCompanies = [...new Set(apps.map(app => app.drive_company))].sort();
+      setCompanies(uniqueCompanies);
     } catch (error) {
       toast.error('Failed to load applications');
       console.error(error);
@@ -62,6 +69,65 @@ function ManageApplications() {
     }
   };
 
+  const handleExportByCompany = () => {
+    if (!selectedCompany) {
+      toast.error('Please select a company first');
+      return;
+    }
+
+    const companyApplications = applications.filter(app => 
+      app.drive_company === selectedCompany
+    );
+
+    if (companyApplications.length === 0) {
+      toast.error('No applications found for this company');
+      return;
+    }
+
+    // Prepare data for Excel
+    const excelData = companyApplications.map((app, index) => ({
+      'S.No': index + 1,
+      'Student Name': app.student_name,
+      'Email': app.student_email,
+      'Register Number': app.student_register_number || 'N/A',
+      'Department': app.student_department || 'N/A',
+      'CGPA': app.student_cgpa ? app.student_cgpa.toFixed(2) : 'N/A',
+      'Job Role': app.drive_role,
+      'Package (LPA)': app.drive_package || 'N/A',
+      'Status': app.status,
+      'Applied Date': new Date(app.applied_at).toLocaleDateString(),
+      'Remarks': app.remarks || ''
+    }));
+
+    // Create worksheet
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    
+    // Set column widths
+    const colWidths = [
+      { wch: 6 },  // S.No
+      { wch: 20 }, // Student Name
+      { wch: 30 }, // Email
+      { wch: 15 }, // Register Number
+      { wch: 20 }, // Department
+      { wch: 8 },  // CGPA
+      { wch: 25 }, // Job Role
+      { wch: 12 }, // Package
+      { wch: 12 }, // Status
+      { wch: 15 }, // Applied Date
+      { wch: 30 }  // Remarks
+    ];
+    ws['!cols'] = colWidths;
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Applications');
+
+    // Save file
+    const filename = `${selectedCompany.replace(/\s+/g, '_')}_Applications_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    toast.success(`Exported ${companyApplications.length} applications to Excel`);
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'Selected':
@@ -86,6 +152,55 @@ function ManageApplications() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-3xl font-bold text-gray-900 mb-6">Manage Applications</h1>
+
+      {/* Export by Company Section */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 shadow-sm mb-6">
+        <div className="flex items-center gap-4">
+          <div className="flex-shrink-0">
+            <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+          </div>
+          <div className="flex-1">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Export Single Company Applications
+            </label>
+            <div className="flex gap-3">
+              <select
+                value={selectedCompany}
+                onChange={(e) => setSelectedCompany(e.target.value)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              >
+                <option value="">-- Select a Company --</option>
+                {companies.map((company) => (
+                  <option key={company} value={company}>
+                    {company}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleExportByCompany}
+                disabled={!selectedCompany}
+                className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-all ${
+                  selectedCompany
+                    ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-lg'
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download
+              </button>
+            </div>
+            {selectedCompany && (
+              <p className="mt-2 text-sm text-blue-700">
+                Ready to download applications for <strong>{selectedCompany}</strong>
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">

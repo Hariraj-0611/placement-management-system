@@ -8,6 +8,7 @@ function StaffStudents() {
   const [searchTerm, setSearchTerm] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showEligibilityModal, setShowEligibilityModal] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -45,6 +46,16 @@ function StaffStudents() {
     }
   };
 
+  const handleDetailClick = async (student) => {
+    try {
+      const response = await staffGetStudentDetail(student.id);
+      setSelectedStudent(response.data);
+      setShowDetailModal(true);
+    } catch (error) {
+      toast.error('Failed to load student details');
+    }
+  };
+
   const handleEditClick = (student) => {
     setSelectedStudent(student);
     setEditForm({
@@ -67,13 +78,19 @@ function StaffStudents() {
   const handleUpdateAcademics = async (e) => {
     e.preventDefault();
     try {
-      await staffUpdateStudentAcademics(selectedStudent.id, editForm);
-      toast.success('Academic details updated successfully');
+      // Only send skills - DO NOT send department
+      // If department changes, student will move to different department and disappear from staff's list
+      const updateData = {
+        skills: editForm.skills
+      };
+      
+      await staffUpdateStudentAcademics(selectedStudent.id, updateData);
+      toast.success('Skills updated successfully');
       setShowEditModal(false);
       fetchStudents();
     } catch (error) {
       if (error.response?.status === 403) {
-        toast.error('Access denied. You do not have permission to update student details.');
+        toast.error(error.response?.data?.error || 'Access denied. You do not have permission to update student details.');
       } else {
         toast.error(error.response?.data?.error || 'Failed to update student');
       }
@@ -232,18 +249,26 @@ function StaffStudents() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => handleEditClick(student)}
-                      className="text-green-600 hover:text-green-900 mr-3"
-                    >
-                      Edit Academics
-                    </button>
-                    <button
-                      onClick={() => handleEligibilityClick(student)}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      Verify Eligibility
-                    </button>
+                    <div className="flex flex-col space-y-1">
+                      <button
+                        onClick={() => handleDetailClick(student)}
+                        className="text-left text-indigo-600 hover:text-indigo-900 font-medium"
+                      >
+                        View Details
+                      </button>
+                      <button
+                        onClick={() => handleEditClick(student)}
+                        className="text-left text-green-600 hover:text-green-900 font-medium"
+                      >
+                        Edit Academics
+                      </button>
+                      <button
+                        onClick={() => handleEligibilityClick(student)}
+                        className="text-left text-blue-600 hover:text-blue-900 font-medium"
+                      >
+                        Verify Eligibility
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -254,108 +279,292 @@ function StaffStudents() {
 
       {/* Edit Academic Details Modal */}
       {showEditModal && (
-        <div className="fixed z-10 inset-0 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900">
+                Edit Academic Details
+              </h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Student: <strong>{selectedStudent?.user?.username}</strong>
+              </p>
+            </div>
             
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <form onSubmit={handleUpdateAcademics}>
-                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">
-                    Edit Academic Details - {selectedStudent?.user?.username}
-                  </h3>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        CGPA (0.0 - 10.0)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="10"
-                        value={editForm.cgpa}
-                        onChange={(e) => setEditForm({ ...editForm, cgpa: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
-                      />
-                    </div>
+            <form onSubmit={handleUpdateAcademics} className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="space-y-4">
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mb-4">
+                  <p className="text-sm text-yellow-700">
+                    <strong>Note:</strong> Staff cannot update CGPA. Only Placement Officers can update CGPA values.
+                  </p>
+                </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Department
-                      </label>
-                      <select
-                        value={editForm.department}
-                        onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
-                      >
-                        <option value="">Select Department</option>
-                        <option value="Computer Science">Computer Science</option>
-                        <option value="Information Technology">Information Technology</option>
-                        <option value="Electronics">Electronics</option>
-                        <option value="Mechanical">Mechanical</option>
-                        <option value="Civil">Civil</option>
-                      </select>
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      CGPA (Read Only)
+                    </label>
+                    <input
+                      type="text"
+                      value={selectedStudent?.cgpa || 'Not Set'}
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Contact Placement Officer to update CGPA
+                    </p>
+                  </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Skills
-                      </label>
-                      <div className="flex gap-2 mb-2">
-                        <input
-                          type="text"
-                          id="skill-input"
-                          placeholder="Add a skill"
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
-                          onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSkill())}
-                        />
-                        <button
-                          type="button"
-                          onClick={addSkill}
-                          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Department (Read Only)
+                    </label>
+                    <input
+                      type="text"
+                      value={selectedStudent?.user?.department || 'Not Set'}
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Contact Placement Officer to change department
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-yellow-50 border-l-4 border-yellow-400 p-3 mb-4">
+                  <p className="text-sm text-yellow-700">
+                    <strong>Warning:</strong> Staff cannot change student department. Changing department will move the student to a different department and they will disappear from your list.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Skills
+                  </label>
+                  <div className="flex gap-2 mb-3">
+                    <input
+                      type="text"
+                      id="skill-input"
+                      placeholder="Add a skill (e.g., Python, Java)"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSkill())}
+                    />
+                    <button
+                      type="button"
+                      onClick={addSkill}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2 min-h-[40px] p-3 border border-gray-200 rounded-lg bg-gray-50">
+                    {editForm.skills.length === 0 ? (
+                      <span className="text-sm text-gray-500">No skills added yet</span>
+                    ) : (
+                      editForm.skills.map((skill, index) => (
+                        <span
+                          key={index}
+                          className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800 font-medium"
                         >
-                          Add
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {editForm.skills.map((skill, index) => (
-                          <span
-                            key={index}
-                            className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800"
+                          {skill}
+                          <button
+                            type="button"
+                            onClick={() => removeSkill(skill)}
+                            className="ml-2 text-green-600 hover:text-green-800 font-bold"
                           >
-                            {skill}
-                            <button
-                              type="button"
-                              onClick={() => removeSkill(skill)}
-                              className="ml-2 text-green-600 hover:text-green-800"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                      </div>
+                            ×
+                          </button>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </form>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex space-x-3">
+              <button
+                type="submit"
+                onClick={handleUpdateAcademics}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+              >
+                Update Details
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Student Detail View Modal */}
+      {showDetailModal && selectedStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900">Student Details</h3>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="space-y-6">
+                {/* Personal Information */}
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-3">Personal Information</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">Username</label>
+                      <p className="text-gray-900 font-medium">{selectedStudent.user?.username || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">Email</label>
+                      <p className="text-gray-900">{selectedStudent.user?.email || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">First Name</label>
+                      <p className="text-gray-900">{selectedStudent.user?.first_name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">Last Name</label>
+                      <p className="text-gray-900">{selectedStudent.user?.last_name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">Department</label>
+                      <p className="text-gray-900">{selectedStudent.user?.department || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">Register Number</label>
+                      <p className="text-gray-900">{selectedStudent.register_number || 'Not Set'}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                  <button
-                    type="submit"
-                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-600 text-base font-medium text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:ml-3 sm:w-auto sm:text-sm"
-                  >
-                    Update
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowEditModal(false)}
-                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                  >
-                    Cancel
-                  </button>
+                {/* Academic Information */}
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-3">Academic Information</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">CGPA</label>
+                      <p className="text-gray-900 font-semibold text-lg">
+                        {selectedStudent.cgpa ? selectedStudent.cgpa.toFixed(2) : 'Not Set'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">Year of Study</label>
+                      <p className="text-gray-900">{selectedStudent.year_of_study || 'Not Set'}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">Backlog Count</label>
+                      <p className="text-gray-900">{selectedStudent.backlog_count || 0}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-500">Profile Status</label>
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        selectedStudent.profile_approved
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {selectedStudent.profile_approved ? 'Approved' : 'Pending Approval'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </form>
+
+                {/* Skills */}
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-3">Skills</h4>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    {selectedStudent.skills && selectedStudent.skills.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {selectedStudent.skills.map((skill, index) => (
+                          <span
+                            key={index}
+                            className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800 font-medium"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500">No skills added</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Eligibility Status */}
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-3">Eligibility Status</h4>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center mb-2">
+                      <span className={`inline-flex px-3 py-1 text-sm font-semibold rounded-full ${
+                        selectedStudent.is_eligible
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {selectedStudent.is_eligible ? 'Eligible' : 'Not Eligible'}
+                      </span>
+                    </div>
+                    {selectedStudent.eligibility_remarks && (
+                      <div className="mt-2">
+                        <label className="text-sm font-medium text-gray-500">Remarks:</label>
+                        <p className="text-gray-900 mt-1">{selectedStudent.eligibility_remarks}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Documents */}
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-900 mb-3">Documents</h4>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">Resume</span>
+                        {selectedStudent.resume ? (
+                          <a
+                            href={selectedStudent.resume}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-green-600 hover:text-green-800 font-medium"
+                          >
+                            View Resume →
+                          </a>
+                        ) : (
+                          <span className="text-sm text-gray-500">Not uploaded</span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700">Profile Photo</span>
+                        {selectedStudent.profile_photo ? (
+                          <a
+                            href={selectedStudent.profile_photo}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-green-600 hover:text-green-800 font-medium"
+                          >
+                            View Photo →
+                          </a>
+                        ) : (
+                          <span className="text-sm text-gray-500">Not uploaded</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200">
+              <button
+                type="button"
+                onClick={() => setShowDetailModal(false)}
+                className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>
@@ -363,63 +572,66 @@ function StaffStudents() {
 
       {/* Verify Eligibility Modal */}
       {showEligibilityModal && (
-        <div className="fixed z-10 inset-0 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-lg">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900">Verify Eligibility</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Student: <strong>{selectedStudent?.user?.username}</strong>
+              </p>
+            </div>
             
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <form onSubmit={handleVerifyEligibility}>
-                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">
-                    Verify Eligibility - {selectedStudent?.user?.username}
-                  </h3>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={eligibilityForm.is_eligible}
-                          onChange={(e) => setEligibilityForm({ ...eligibilityForm, is_eligible: e.target.checked })}
-                          className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">
-                          Mark as Eligible
-                        </span>
-                      </label>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Remarks
-                      </label>
-                      <textarea
-                        value={eligibilityForm.remarks}
-                        onChange={(e) => setEligibilityForm({ ...eligibilityForm, remarks: e.target.value })}
-                        rows="3"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
-                        placeholder="Add any remarks about eligibility..."
-                      />
-                    </div>
-                  </div>
+            <form onSubmit={handleVerifyEligibility} className="px-6 py-4">
+              <div className="space-y-4">
+                <div className="bg-blue-50 border-l-4 border-blue-400 p-3">
+                  <p className="text-sm text-blue-700">
+                    Mark this student as eligible or not eligible for placement drives.
+                  </p>
                 </div>
 
-                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                  <button
-                    type="submit"
-                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowEligibilityModal(false)}
-                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                  >
-                    Cancel
-                  </button>
+                <div className="flex items-center p-3 border border-gray-200 rounded-lg">
+                  <input
+                    type="checkbox"
+                    id="eligibility-checkbox"
+                    checked={eligibilityForm.is_eligible}
+                    onChange={(e) => setEligibilityForm({ ...eligibilityForm, is_eligible: e.target.checked })}
+                    className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="eligibility-checkbox" className="ml-3 text-sm font-medium text-gray-900">
+                    Mark as Eligible for Placement
+                  </label>
                 </div>
-              </form>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Remarks (Optional)
+                  </label>
+                  <textarea
+                    value={eligibilityForm.remarks}
+                    onChange={(e) => setEligibilityForm({ ...eligibilityForm, remarks: e.target.value })}
+                    rows="4"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Add any remarks about eligibility (e.g., reasons, conditions, notes)..."
+                  />
+                </div>
+              </div>
+            </form>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex space-x-3">
+              <button
+                type="submit"
+                onClick={handleVerifyEligibility}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+              >
+                Save Eligibility Status
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowEligibilityModal(false)}
+                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -435,8 +647,8 @@ function StaffStudents() {
           </div>
           <div className="ml-3">
             <p className="text-sm text-yellow-700">
-              <strong>Staff Permissions:</strong> You can update academic details (CGPA, Department, Skills) and verify eligibility. 
-              You CANNOT delete students, reset passwords, or change user roles.
+              <strong>Staff Permissions:</strong> You can update student <strong>Skills</strong> and verify eligibility for students in your department only. 
+              You CANNOT update CGPA, change departments, delete students, reset passwords, or change user roles. Contact Placement Officer for these actions.
             </p>
           </div>
         </div>
