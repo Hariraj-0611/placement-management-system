@@ -535,8 +535,14 @@ class CompanyDriveViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
+        from django.utils import timezone
         user = self.request.user
-        queryset = CompanyDrive.objects.all().select_related('created_by')
+        today = timezone.now().date()
+        
+        # Base queryset excluding expired drives
+        queryset = CompanyDrive.objects.filter(
+            drive_date__gte=today  # Only show drives with future or today's date
+        ).select_related('created_by')
         
         # Students can only see active drives
         if user.role == 'STUDENT':
